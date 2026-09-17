@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telegram Draw Bot - Management Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header>
+    <div class="nav-container">
+      <div class="brand-section">
+        <div class="brand-icon">🎁</div>
+        <div>
+          <div class="brand-title">Telegram Draw Bot</div>
+          <div class="brand-subtitle">Autonomous Giveaway & Lucky Draw System</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <!-- Connected Bot Status Pill -->
+        <div id="draw-bot-status-pill" class="status-pill offline" title="Telegram Bot Connection State">
+          <span class="status-dot"></span>
+          <span id="draw-bot-username-display">Disconnected</span>
+        </div>
+
+        <button type="button" class="btn btn-secondary btn-sm" onclick="openDrawWinnersModal()">
+          🏆 Winners List
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="openDrawSettingsModal()">
+          ⚙️ Bot Settings
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openCreateDrawModal()">
+          ➕ New Draw
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="loadDrawModule()" title="Refresh Campaigns & Metrics">
+          🔄 Refresh
+        </button>
+        <button id="btn-logout" type="button" class="btn btn-secondary btn-sm" onclick="handleLogout()" style="display: none;">
+          Logout
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Layout -->
+  <main class="main-layout" id="module-draw">
+    
+    <!-- Dashboard Top Bar -->
+    <div class="dashboard-top-bar">
+      <div class="dashboard-title-group">
+        <h2>Giveaway Campaigns</h2>
+        <p>Create, schedule, and manage transparent community lucky draws on Telegram.</p>
+      </div>
+    </div>
+
+    <!-- KPI Metrics Summary Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div>
+          <div class="kpi-label">Total Events</div>
+          <div class="kpi-value" id="draw-stat-total">0</div>
+        </div>
+        <div class="kpi-icon-wrap kpi-icon-blue">📊</div>
+      </div>
+      <div class="kpi-card">
+        <div>
+          <div class="kpi-label">Active Now</div>
+          <div class="kpi-value" id="draw-stat-active" style="color: var(--success-color);">0</div>
+        </div>
+        <div class="kpi-icon-wrap kpi-icon-green">⚡</div>
+      </div>
+      <div class="kpi-card">
+        <div>
+          <div class="kpi-label">Draft Events</div>
+          <div class="kpi-value" id="draw-stat-draft" style="color: #7c3aed;">0</div>
+        </div>
+        <div class="kpi-icon-wrap kpi-icon-purple">📝</div>
+      </div>
+      <div class="kpi-card">
+        <div>
+          <div class="kpi-label">Total Winners</div>
+          <div class="kpi-value" id="draw-stat-winners" style="color: var(--warning-color);">0</div>
+        </div>
+        <div class="kpi-icon-wrap kpi-icon-amber">🏆</div>
+      </div>
+    </div>
+
+    <!-- Filter & Search Controls Bar -->
+    <div class="filter-bar">
+      <div class="search-input-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="draw-search-input" class="search-input" placeholder="Search events by name, chat ID, rules..." oninput="onSearchDrawCampaigns()">
+      </div>
+      <div class="filter-pills">
+        <button id="draw-filter-all" class="filter-pill btn-draw-filter active" onclick="filterDrawCampaigns('ALL', this)">All Events</button>
+        <button id="draw-filter-active" class="filter-pill btn-draw-filter" onclick="filterDrawCampaigns('ACTIVE', this)">Active</button>
+        <button id="draw-filter-draft" class="filter-pill btn-draw-filter" onclick="filterDrawCampaigns('DRAFT', this)">Drafts</button>
+        <button id="draw-filter-ended" class="filter-pill btn-draw-filter" onclick="filterDrawCampaigns('ENDED', this)">Ended</button>
+      </div>
+    </div>
+
+    <!-- Campaigns Grid -->
+    <div id="draw-campaigns-grid" class="campaigns-grid">
+      <!-- Injected dynamically via renderDrawCampaigns() -->
+    </div>
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL 1: Create / Edit Event Draft Modal (添加新活动)                      -->
+  <!-- ========================================================================= -->
+  <div id="modal-draw-campaign" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 780px;">
+      <div class="modal-header">
+        <div>
+          <h3 id="modal-draw-campaign-title" class="modal-title">New Event Draft</h3>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+            Configure giveaway details, prize tiers, and Telegram gatekeeping criteria.
+          </p>
+        </div>
+        <button type="button" class="modal-close-btn" onclick="closeDrawCampaignModal()" title="Close">&times;</button>
+      </div>
+
+      <form id="form-draw-campaign" onsubmit="handleSaveDrawCampaign(event)" style="display: flex; flex-direction: column; overflow: hidden;">
+        <input type="hidden" id="draw-edit-id" />
+        <input type="hidden" id="draw-form-desc" />
+
+        <div class="modal-body" style="max-height: 72vh;">
+          
+          <!-- SECTION 1: Basic Information -->
+          <div class="form-section">
+            <div class="form-section-title">
+              <span>📝 Basic Details</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Event Name (Internal Identifier) *</label>
+              <input type="text" id="draw-form-name" required placeholder="e.g., September Community Giveaway" class="form-input" />
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div class="form-group">
+                <label class="form-label">Join Button Text *</label>
+                <input type="text" id="draw-form-button-text" value="🎉 Join Lucky Draw" required class="form-input" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Cover Image URL (Optional)</label>
+                <input type="text" id="draw-form-image-url" placeholder="https://example.com/banner.jpg" class="form-input" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Event Description & Rules (Telegram HTML) *</label>
+              <div id="draw-desc-editor"></div>
+            </div>
+          </div>
+
+          <!-- SECTION 2: Target & Eligibility (Gatekeeping) -->
+          <div class="form-section">
+            <div class="form-section-title">
+              <span>🎯 Target Community & Eligibility</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div class="form-group">
+                <label class="form-label">Target Group / Channel ID *</label>
+                <input type="text" id="draw-form-target-chat" required placeholder="@community, t.me link, or -100..." class="form-input" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Topic ID (Optional)</label>
+                <input type="text" id="draw-form-target-topic" placeholder="e.g., 42 (Forum thread)" class="form-input" />
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div class="form-group">
+                <label class="form-label">Required Channel (Gatekeeping)</label>
+                <input type="text" id="draw-form-req-channel" placeholder="@channel or https://t.me/..." class="form-input" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Required Group (Gatekeeping)</label>
+                <input type="text" id="draw-form-req-group" placeholder="@group or https://t.me/..." class="form-input" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Whitelisted Users / OGs Only (Optional)</label>
+              <input type="text" id="draw-form-allowed-ids" placeholder="Comma-separated UIDs or handles: 123456, @user1, @user2" class="form-input" />
+            </div>
+          </div>
+
+          <!-- SECTION 3: Prize Tiers -->
+          <div class="form-section">
+            <div class="form-section-title">
+              <span>🎁 Prize Tiers Configuration *</span>
+              <button type="button" class="btn btn-secondary btn-xs" onclick="addPrizeTierRow()">
+                + Add Tier
+              </button>
+            </div>
+            <div id="draw-prize-rows-container" style="display: flex; flex-direction: column; gap: 8px;">
+              <!-- Dynamic Prize Rows injected here -->
+            </div>
+          </div>
+
+          <!-- SECTION 4: Draw Mode & Schedule -->
+          <div class="form-section">
+            <div class="form-section-title">
+              <span>⏰ Draw Mode & Automation Schedule</span>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: flex-start;">
+              <div class="form-group">
+                <label class="form-label">Draw Mode</label>
+                <select id="draw-form-mode" onchange="toggleDrawModeFields()" class="form-input">
+                  <option value="MANUAL">Manual Trigger</option>
+                  <option value="AUTO">Auto Draw (Scheduled)</option>
+                </select>
+              </div>
+
+              <div id="draw-form-autotime-wrap" class="form-group hidden">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label class="form-label">Auto Draw Time (UTC+8) *</label>
+                  <span id="draw-form-bjt-clock" style="font-size: 0.76rem; color: var(--primary-color); font-family: var(--font-mono); font-weight: 600;"></span>
+                </div>
+                <input type="datetime-local" id="draw-form-autotime" class="form-input" />
+                <div style="font-size: 0.74rem; color: var(--warning-color); margin-top: 2px;">
+                  ⚠️ Please enter Beijing Time (UTC+8). Cannot be earlier than current time.
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Winner Announcement Custom Header (Optional)</label>
+              <input type="text" id="draw-form-announcement" placeholder="🏆 CONGRATULATIONS TO OUR LUCKY WINNERS!" class="form-input" />
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeDrawCampaignModal()">Cancel</button>
+          <button type="submit" id="btn-save-draw-campaign" class="btn btn-primary">💾 Save Event Draft</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL 2: Winners Management Modal                                         -->
+  <!-- ========================================================================= -->
+  <div id="modal-draw-winners" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 960px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">🏆 Event Winners & Claim Records</h3>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+            Inspect winner details, delivery statuses, and export audit records.
+          </p>
+        </div>
+        <button type="button" class="modal-close-btn" onclick="closeDrawWinnersModal()">&times;</button>
+      </div>
+
+      <div class="modal-body" style="max-height: 72vh;">
+        <!-- Filters & Action Bar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 10px; align-items: center; flex: 1;">
+            <select id="draw-winners-filter-campaign" onchange="renderDrawWinnersTable()" class="form-input" style="max-width: 280px;">
+              <option value="ALL">All Events (All Winners)</option>
+            </select>
+            <input type="text" id="draw-winners-search" placeholder="Search winners by username, UID, prize..." class="form-input" style="max-width: 280px;" oninput="renderDrawWinnersTable()" />
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="exportDrawWinnersCsv()">
+            📥 Export CSV
+          </button>
+        </div>
+
+        <!-- Table Container -->
+        <div style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-surface);">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Prize Tier</th>
+                <th>Winner (TG User)</th>
+                <th>Telegram UID</th>
+                <th>Draw Time</th>
+              </tr>
+            </thead>
+            <tbody id="draw-winners-tbody">
+              <!-- Injected via app.js renderDrawWinnersTable() -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeDrawWinnersModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL 3: Bot Settings & Templates Modal                                   -->
+  <!-- ========================================================================= -->
+  <div id="modal-draw-settings" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 820px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">⚙️ Bot Settings & Interaction Templates</h3>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+            Configure your dedicated Telegram Bot token and customize user pop-up notices.
+          </p>
+        </div>
+        <button type="button" class="modal-close-btn" onclick="closeDrawSettingsModal()">&times;</button>
+      </div>
+
+      <div class="modal-body" style="max-height: 72vh;">
+        
+        <!-- SECTION: Bot Token Credentials -->
+        <div class="form-section">
+          <div class="form-section-title">
+            <span>🤖 Dedicated Telegram Bot Token</span>
+            <span id="draw-settings-bot-status" class="status-pill offline" style="font-size: 0.75rem;">Offline</span>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Telegram Bot Token (from @BotFather)</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="password" id="draw-session-token-input" placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz" class="form-input" style="flex: 1;" />
+              <input type="hidden" id="draw-settings-token" />
+              <button type="button" id="btn-draw-connect-token" class="btn btn-primary" onclick="connectDrawSessionBot()">Connect</button>
+              <button type="button" id="btn-draw-disconnect-token" class="btn btn-danger" onclick="disconnectDrawSessionBot()">Disconnect</button>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; align-items: center; padding-top: 8px; border-top: 1px solid var(--border-color); flex-wrap: wrap;">
+            <input type="text" id="draw-settings-test-chat" placeholder="Test Chat ID (e.g. @your_channel or -100...)" class="form-input" style="flex: 2; min-width: 180px;" />
+            <input type="text" id="draw-settings-test-topic" placeholder="Topic ID (Optional)" class="form-input" style="flex: 1; min-width: 120px;" />
+            <button type="button" class="btn btn-secondary" onclick="testDrawBotPing()">🔔 Test Ping</button>
+          </div>
+        </div>
+
+        <!-- SECTION: Interaction Message Templates -->
+        <form id="form-draw-bot-messages" onsubmit="handleSaveDrawBotMessages(event)" class="form-section">
+          <div class="form-section-title">
+            <span>💬 Interaction Pop-up Notification Templates</span>
+            <button type="submit" class="btn btn-primary btn-xs">Save Templates</button>
+          </div>
+          <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: -6px;">
+            Customize the instant pop-up toast text returned when members tap the Join button in Telegram.
+          </p>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label class="form-label">1. Entry Successful Notice</label>
+              <input type="text" id="draw-msg-success-join" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">2. Duplicate Entry Notice</label>
+              <input type="text" id="draw-msg-already-joined" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">3. Giveaway Not Started Notice</label>
+              <input type="text" id="draw-msg-not-started" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">4. Giveaway Has Ended Notice</label>
+              <input type="text" id="draw-msg-ended" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">5. Entries Closed Notice</label>
+              <input type="text" id="draw-msg-entries-closed" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">6. Whitelist Exclusion Notice</label>
+              <input type="text" id="draw-msg-og-only" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">7. Must Join Group/Channel Notice</label>
+              <input type="text" id="draw-msg-must-join" class="form-input" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">8. Rate Limit / Cooldown Notice</label>
+              <input type="text" id="draw-msg-rate-limit" class="form-input" />
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 4px;">
+            <label class="form-label">9. Join Failed Fallback Notice</label>
+            <input type="text" id="draw-msg-join-failed" class="form-input" />
+          </div>
+        </form>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeDrawSettingsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL 4: Draw Confirmation & Designated Winners Modal                     -->
+  <!-- ========================================================================= -->
+  <div id="modal-draw-confirm" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 720px;">
+      
+      <!-- STEP 1: Summary Confirmation -->
+      <div id="draw-confirm-step-1" style="display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <h3 class="modal-title">🎲 Confirm Winner Draw</h3>
+          <button type="button" class="modal-close-btn" onclick="closeDrawConfirmModal()">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-section" style="background: var(--bg-surface); border: 1px solid var(--border-color);">
+            <h4 id="draw-confirm-event-name" style="margin: 0 0 10px 0; font-size: 1.15rem; color: var(--text-primary);">Event Title</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.88rem;">
+              <div>Target Chat: <strong id="draw-confirm-target-chat" style="color: var(--primary-color);">-</strong></div>
+              <div>Participants Joined: <strong id="draw-confirm-participants" style="color: var(--primary-color);">0</strong></div>
+              <div>Total Prize Slots: <strong id="draw-confirm-prizes" style="color: var(--warning-color);">0</strong></div>
+              <div>Scheduled Auto Draw: <strong id="draw-confirm-autotime" style="color: var(--text-secondary); font-family: var(--font-mono);">-</strong></div>
+            </div>
+            <div id="draw-confirm-designated-row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); font-size: 0.86rem;">
+              Pre-assigned Winners: <strong id="draw-confirm-designated-status" style="color: #7c3aed;">0</strong>
+            </div>
+          </div>
+          <p style="font-size: 0.84rem; color: var(--text-secondary); margin: 0; line-height: 1.5;">
+            Choose whether to perform an immediate 100% random draw, or designate specific winners for select prize slots before triggering.
+          </p>
+        </div>
+
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-secondary" onclick="closeDrawConfirmModal()">Cancel</button>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" id="btn-draw-confirm-designated" class="btn btn-secondary" onclick="switchToDesignatedDrawView()">
+              🎯 指定中奖者 (Designate)
+            </button>
+            <button type="button" id="btn-draw-confirm-random" class="btn btn-primary" onclick="executeRandomDraw()" style="background: var(--success-color); border-color: var(--success-color);">
+              ⚡ 立刻全随机开奖 (Draw Now)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: Designated Winners Table -->
+      <div id="draw-confirm-step-2" class="hidden" style="display: flex; flex-direction: column;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <button type="button" class="btn btn-secondary btn-xs" onclick="switchBackToDrawStep1()">← Back</button>
+            <h3 class="modal-title">🎯 指定中奖者 (Designated Winners)</h3>
+          </div>
+          <button type="button" class="modal-close-btn" onclick="closeDrawConfirmModal()">&times;</button>
+        </div>
+
+        <div class="modal-body" style="max-height: 70vh;">
+          <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; font-size: 0.84rem;">
+            <span>奖品总配额: <b id="draw-desig-total-prizes" style="color: var(--warning-color);">0</b></span>
+            <span>已指定: <b id="draw-desig-assigned-count" style="color: var(--primary-color);">0</b></span>
+            <span>剩余自动随机抽: <b id="draw-desig-remaining-count" style="color: var(--success-color);">0</b></span>
+          </div>
+
+          <p style="margin: 0; font-size: 0.82rem; color: var(--text-secondary);">
+            💡 从下方添加要指定的参与者与所获奖品。指定人数不能超过总奖品数；若指定人数少于总奖品数，剩余奖品将在开奖时从剩余参与者中随机抽取。
+          </p>
+
+          <!-- Designated Rows Container -->
+          <div id="draw-designated-rows-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+            <!-- Rows injected dynamically via JS -->
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+            <div style="display: flex; gap: 8px;">
+              <button type="button" id="btn-add-designated-row" class="btn btn-secondary btn-xs" onclick="addDesignatedWinnerRow()">
+                ➕ 添加指定获奖者
+              </button>
+              <button type="button" id="btn-clear-designated-rows" class="btn btn-secondary btn-xs" onclick="clearAllDesignatedRows()" style="color: var(--danger-color);">
+                清空指定 (恢复纯随机)
+              </button>
+            </div>
+            <span id="draw-desig-limit-tip" style="font-size: 0.78rem; color: var(--danger-color);" class="hidden">已达总奖品数上限</span>
+          </div>
+
+          <!-- Schedule Auto Draw Time Box -->
+          <div id="draw-desig-schedule-box" class="form-section">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">⏰ 自动开奖时间 (UTC+8):</span>
+              <span id="draw-desig-current-autotime-badge" style="font-size: 0.78rem; color: var(--primary-color); font-family: var(--font-mono); font-weight: 600;">--</span>
+            </div>
+            <div id="draw-desig-time-input-wrap" class="hidden" style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
+              <input type="datetime-local" id="draw-desig-new-autotime" class="form-input" style="flex: 1;" />
+              <span style="font-size: 0.75rem; color: var(--text-secondary);">未设定时，可在此设置时间并按定时开奖</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-secondary" onclick="switchBackToDrawStep1()">Back</button>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary" onclick="closeDrawConfirmModal()">Cancel</button>
+            <button type="button" id="btn-save-schedule-designated" class="btn btn-secondary" onclick="saveAndScheduleDesignatedDraw()">
+              ⏰ 按照 Auto Draw 时间开奖
+            </button>
+            <button type="button" id="btn-execute-designated-draw" class="btn btn-primary" onclick="executeDesignatedDraw()" style="background: var(--success-color); border-color: var(--success-color);">
+              ⚡ 立刻开奖
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL 5: Admin Login Authentication Modal                                 -->
+  <!-- ========================================================================= -->
+  <div id="modal-auth" class="modal-overlay hidden">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.3rem;">🔐</span>
+          <h3 class="modal-title">Admin Authentication</h3>
+        </div>
+      </div>
+      <form id="form-auth-login" onsubmit="handleAuthLogin(event)">
+        <div class="modal-body">
+          <p style="font-size: 0.86rem; color: var(--text-secondary); margin: 0;">
+            Please enter your management password to unlock the Telegram Draw Bot console.
+          </p>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" id="auth-password-input" class="form-input" placeholder="Default: admin123" required autofocus />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Unlock Dashboard</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Global Toast Notification Container -->
+  <div id="admin-toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
