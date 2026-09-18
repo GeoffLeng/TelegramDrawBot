@@ -1,6 +1,6 @@
 # =========================================================================
 # TelegramDrawBot - Git Ignore Rules
-# Strictly prevents committing secrets, database files, and build artifacts
+# Strictly prevents committing secrets, database files, markdown, and build artifacts
 # =========================================================================
 
 # --- 1. Environment & Sensitive Secrets ---
@@ -14,10 +14,28 @@
 *.key
 *.cert
 *.crt
+*.pfx
+*.p12
+*.keystore
+*.jks
+id_rsa*
+id_ed25519*
 credentials.json
+service-account*.json
 token.txt
+*token*
 *secret*
 *credential*
+*password*
+*.kdbx
+*.ovpn
+*.session
+*.session-journal
+session/
+sessions/
+secrets/
+auth/
+config.local.*
 
 # --- 2. Database & Data Volumes ---
 *.db
@@ -29,20 +47,32 @@ token.txt
 *.sql
 *.dump
 *.backup
-/data/
-/db/
+*.rdb
+*.parquet
+*.csv
+*.tsv
+data/
+db/
+database/
+storage/
 
-# --- 3. Dependencies & Package Managers ---
+# --- 3. Markdown & Documentation Files ---
+*.md
+*.markdown
+markdown/
+docs/
+
+# --- 4. Dependencies & Package Managers ---
 node_modules/
 .pnp
 .pnp.js
 
-# --- 4. Production Build & TypeScript Cache ---
+# --- 5. Production Build & TypeScript Cache ---
 dist/
 build/
 *.tsbuildinfo
 
-# --- 5. Logs & Diagnostics ---
+# --- 6. Logs & Diagnostics ---
 logs/
 *.log
 npm-debug.log*
@@ -50,14 +80,14 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# --- 6. Temporary & Scratch Files ---
+# --- 7. Temporary & Scratch Files ---
 tmp/
 temp/
 scratch/
 *.tmp
 *.temp
 
-# --- 7. OS & IDE Metadata ---
+# --- 8. OS & IDE Metadata ---
 .DS_Store
 Thumbs.db
 .idea/
