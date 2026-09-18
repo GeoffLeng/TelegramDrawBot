@@ -1045,6 +1045,8 @@ async function openDrawConfirmModal(id) {
 }
 
 function closeDrawConfirmModal() {
+  closeDesignatedPartDropdown();
+  closeParticipantPickerModal();
   const modal = document.getElementById('modal-draw-confirm');
   if (modal) modal.classList.add('hidden');
   currentConfirmDrawLottery = null;
@@ -1144,6 +1146,339 @@ function switchToDesignatedDrawView() {
   updateDesignatedCounters();
 }
 
+function formatParticipantDisplay(p) {
+  let username = '';
+  if (p && p.username && !p.username.startsWith('User')) {
+    username = `@${p.username}`;
+  } else {
+    const rawId = String((p && (p.chatId || p.id)) || '');
+    username = rawId ? `User#${rawId.slice(-4)}` : 'User';
+  }
+
+  let nickname = [p && p.firstName, p && p.lastName].filter(Boolean).join(' ').trim();
+  if (nickname.length > 20) {
+    nickname = nickname.slice(0, 20) + '...';
+  }
+  if (!nickname) {
+    nickname = '--';
+  }
+
+  return { username, nickname };
+}
+
+let activeDesigPartTrigger = null;
+let activePickerTargetRow = null;
+
+function filterParticipantsByQuery(query) {
+  const allParticipants = currentConfirmDrawParticipants || [];
+  if (!query || !query.trim()) return allParticipants;
+  const q = query.trim().toLowerCase();
+  const cleanQ = q.startsWith('@') ? q.slice(1) : q;
+  return allParticipants.filter(p => {
+    const u = (p.username || '').toLowerCase();
+    const f = (p.firstName || '').toLowerCase();
+    const l = (p.lastName || '').toLowerCase();
+    const fullNick = `${f} ${l}`.trim();
+    const rawId = String(p.chatId || p.id || '');
+    return u.includes(cleanQ) || f.includes(q) || l.includes(q) || fullNick.includes(q) || rawId.includes(q);
+  });
+}
+
+function closeDesignatedPartDropdown() {
+  const menu = document.getElementById('draw-desig-floating-part-menu');
+  if (menu) menu.classList.add('hidden');
+  activeDesigPartTrigger = null;
+}
+
+function openDesignatedPartDropdown(triggerEl, event) {
+  if (event) event.stopPropagation();
+  const existingMenu = document.getElementById('draw-desig-floating-part-menu');
+
+  if (activeDesigPartTrigger === triggerEl && existingMenu && !existingMenu.classList.contains('hidden')) {
+    closeDesignatedPartDropdown();
+    return;
+  }
+  activeDesigPartTrigger = triggerEl;
+
+  let menu = existingMenu;
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'draw-desig-floating-part-menu';
+    menu.className = 'hidden';
+    menu.style.cssText = 'position: fixed; z-index: 100000; background: #ffffff; border: 1px solid #38bdf8; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 280px; max-height: 280px; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;';
+    document.body.appendChild(menu);
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#draw-desig-floating-part-menu') && !e.target.closest('.draw-desig-part-trigger')) {
+        closeDesignatedPartDropdown();
+      }
+    });
+
+    window.addEventListener('resize', closeDesignatedPartDropdown);
+  }
+
+  // Calculate position
+  const rect = triggerEl.getBoundingClientRect();
+  menu.style.width = Math.max(260, rect.width) + 'px';
+  menu.style.left = rect.left + 'px';
+
+  const spaceBelow = window.innerHeight - rect.bottom;
+  if (spaceBelow < 260 && rect.top > 260) {
+    menu.style.top = Math.max(10, rect.top - 255) + 'px';
+  } else {
+    menu.style.top = (rect.bottom + 4) + 'px';
+  }
+
+  const row = triggerEl.closest('.draw-designated-row');
+  const curHiddenInput = row ? row.querySelector('.draw-desig-part-select') : null;
+  const curPartId = curHiddenInput ? String(curHiddenInput.value) : '';
+
+  const otherSelectedIds = new Set();
+  const allRows = document.querySelectorAll('.draw-designated-row');
+  allRows.forEach(r => {
+    if (r !== row) {
+      const inp = r.querySelector('.draw-desig-part-select');
+      if (inp && inp.value) otherSelectedIds.add(String(inp.value));
+    }
+  });
+
+  menu.innerHTML = `
+    <div style="padding: 6px 8px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; gap: 4px; align-items: center;">
+      <input type="text" id="draw-desig-dropdown-quick-search" placeholder="快速筛选..." oninput="onDropdownQuickFilter(this.value)" style="flex: 1; height: 26px; padding: 2px 6px; font-size: 0.74rem; border-radius: 4px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; box-sizing: border-box;" onclick="event.stopPropagation();" />
+      <button type="button" class="btn btn-secondary btn-xs" onclick="openParticipantPickerModal(activeDesigPartTrigger)" style="height: 26px; padding: 0 6px; font-size: 0.72rem; color: #0284c7; background: #e0f2fe; border: 1px solid #bae6fd; white-space: nowrap; cursor: pointer;" title="打开大弹窗并支持高级搜索">
+        ⛶ 展开
+      </button>
+    </div>
+    <div id="draw-desig-dropdown-items" style="flex: 1; overflow-y: auto; max-height: 220px;"></div>
+  `;
+
+  renderDropdownItems('', curPartId, otherSelectedIds);
+  menu.classList.remove('hidden');
+
+  setTimeout(() => {
+    const qInp = document.getElementById('draw-desig-dropdown-quick-search');
+    if (qInp) qInp.focus();
+  }, 50);
+}
+
+function onDropdownQuickFilter(val) {
+  if (!activeDesigPartTrigger) return;
+  const row = activeDesigPartTrigger.closest('.draw-designated-row');
+  const curHiddenInput = row ? row.querySelector('.draw-desig-part-select') : null;
+  const curPartId = curHiddenInput ? String(curHiddenInput.value) : '';
+
+  const otherSelectedIds = new Set();
+  const allRows = document.querySelectorAll('.draw-designated-row');
+  allRows.forEach(r => {
+    if (r !== row) {
+      const inp = r.querySelector('.draw-desig-part-select');
+      if (inp && inp.value) otherSelectedIds.add(String(inp.value));
+    }
+  });
+
+  renderDropdownItems(val, curPartId, otherSelectedIds);
+}
+
+function renderDropdownItems(query, curPartId, otherSelectedIds) {
+  const container = document.getElementById('draw-desig-dropdown-items');
+  if (!container) return;
+
+  const filtered = filterParticipantsByQuery(query);
+  if (filtered.length === 0) {
+    container.innerHTML = '<div style="padding: 12px; text-align: center; color: #94a3b8; font-size: 0.74rem;">无匹配参与者</div>';
+    return;
+  }
+
+  container.innerHTML = filtered.map(p => {
+    const pId = String(p.id || p.chatId);
+    const isCurSelected = pId === curPartId;
+    const isOtherSelected = otherSelectedIds.has(pId);
+    const { username, nickname } = formatParticipantDisplay(p);
+
+    if (isOtherSelected) {
+      return `
+        <div style="padding: 6px 10px; border-bottom: 1px solid #f1f5f9; opacity: 0.45; cursor: not-allowed; display: flex; flex-direction: column;">
+          <div style="font-size: 0.8rem; color: #64748b; font-weight: 500;">
+            <span>${escapeHtml(username)}</span>
+            <span style="font-size: 0.72rem; color: #ef4444; margin-left: 6px;">(已在其他行指定)</span>
+          </div>
+          <div style="font-size: 0.72rem; color: #94a3b8;">${escapeHtml(nickname)}</div>
+        </div>
+      `;
+    }
+
+    const activeBg = isCurSelected ? 'background: #e0f2fe;' : '';
+    const checkIcon = isCurSelected ? '<span style="color: #0284c7; font-size: 0.8rem;">✓</span>' : '';
+
+    return `
+      <div onclick="selectDesignatedParticipant('${escapeHtml(pId)}')" style="padding: 6px 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: background 0.15s; ${activeBg}" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='${isCurSelected ? '#e0f2fe' : 'transparent'}'">
+        <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0; flex: 1;">
+          <div style="font-size: 0.82rem; color: #0f172a; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(username)}</div>
+          <div style="font-size: 0.72rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(nickname)}</div>
+        </div>
+        ${checkIcon}
+      </div>
+    `;
+  }).join('');
+}
+
+function openParticipantPickerModal(btnOrTrigger) {
+  closeDesignatedPartDropdown();
+  const row = btnOrTrigger ? btnOrTrigger.closest('.draw-designated-row') : null;
+  activePickerTargetRow = row;
+
+  const modal = document.getElementById('modal-draw-participant-picker');
+  if (!modal) return;
+
+  const searchInput = document.getElementById('draw-picker-search-input');
+  if (searchInput) {
+    searchInput.value = '';
+  }
+
+  doSearchParticipantPicker();
+  modal.classList.remove('hidden');
+  modal.style.display = 'flex';
+
+  setTimeout(() => {
+    if (searchInput) searchInput.focus();
+  }, 50);
+}
+
+function closeParticipantPickerModal() {
+  const modal = document.getElementById('modal-draw-participant-picker');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
+  activePickerTargetRow = null;
+}
+
+function onParticipantPickerInput() {
+  doSearchParticipantPicker();
+}
+
+function resetParticipantPickerSearch() {
+  const searchInput = document.getElementById('draw-picker-search-input');
+  if (searchInput) searchInput.value = '';
+  doSearchParticipantPicker();
+}
+
+function doSearchParticipantPicker() {
+  const searchInput = document.getElementById('draw-picker-search-input');
+  const query = searchInput ? searchInput.value : '';
+  const filtered = filterParticipantsByQuery(query);
+
+  const allParticipants = currentConfirmDrawParticipants || [];
+  const totalEl = document.getElementById('draw-picker-total-count');
+  const filteredEl = document.getElementById('draw-picker-filtered-count');
+  if (totalEl) totalEl.textContent = allParticipants.length;
+  if (filteredEl) filteredEl.textContent = filtered.length;
+
+  const container = document.getElementById('draw-picker-list-container');
+  if (!container) return;
+
+  const curHiddenInput = activePickerTargetRow ? activePickerTargetRow.querySelector('.draw-desig-part-select') : null;
+  const curPartId = curHiddenInput ? String(curHiddenInput.value) : '';
+
+  const otherSelectedIds = new Set();
+  const allRows = document.querySelectorAll('.draw-designated-row');
+  allRows.forEach(r => {
+    if (r !== activePickerTargetRow) {
+      const inp = r.querySelector('.draw-desig-part-select');
+      if (inp && inp.value) otherSelectedIds.add(String(inp.value));
+    }
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div style="padding: 30px; text-align: center; color: #94a3b8; font-size: 0.88rem;">
+        🔍 没有搜索到匹配【${escapeHtml(query)}】的参与者
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = filtered.map(p => {
+    const pId = String(p.id || p.chatId);
+    const isCurSelected = pId === curPartId;
+    const isOtherSelected = otherSelectedIds.has(pId);
+    const { username, nickname } = formatParticipantDisplay(p);
+    const initial = (username.replace('@', '')[0] || 'U').toUpperCase();
+
+    if (isOtherSelected) {
+      return `
+        <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; opacity: 0.45; cursor: not-allowed;">
+          <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+            <div style="width: 34px; height: 34px; border-radius: 50%; background: #e2e8f0; color: #64748b; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.82rem; flex-shrink: 0;">
+              ${escapeHtml(initial)}
+            </div>
+            <div style="display: flex; flex-direction: column; min-width: 0;">
+              <span style="font-size: 0.84rem; font-weight: 600; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(username)}</span>
+              <span style="font-size: 0.74rem; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(nickname)}</span>
+            </div>
+          </div>
+          <span style="font-size: 0.74rem; color: #ef4444; background: #fee2e2; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 4px; flex-shrink: 0;">已在其他行指定</span>
+        </div>
+      `;
+    }
+
+    const borderStyle = isCurSelected ? 'border: 1px solid #0284c7; background: #f0f9ff;' : 'border: 1px solid #e2e8f0; background: #ffffff;';
+
+    return `
+      <div onclick="selectDesignatedParticipant('${escapeHtml(pId)}')" style="display: flex; justify-content: space-between; align-items: center; border-radius: 8px; padding: 8px 12px; cursor: pointer; transition: all 0.15s ease; ${borderStyle}" onmouseover="if(!${isCurSelected}) this.style.background='#f8fafc';" onmouseout="if(!${isCurSelected}) this.style.background='#ffffff';">
+        <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+          <div style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #0284c7 0%, #6366f1 100%); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.84rem; flex-shrink: 0; box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);">
+            ${escapeHtml(initial)}
+          </div>
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <span style="font-size: 0.86rem; font-weight: 600; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(username)}</span>
+            <span style="font-size: 0.74rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(nickname)}</span>
+          </div>
+        </div>
+        <div>
+          ${isCurSelected
+            ? '<span style="font-size: 0.74rem; color: #0284c7; background: #e0f2fe; border: 1px solid #7dd3fc; padding: 3px 10px; border-radius: 4px; font-weight: 600;">当前已选 ✓</span>'
+            : '<button type="button" class="btn btn-secondary btn-xs" style="padding: 3px 10px; font-size: 0.74rem; color: #0284c7; border: 1px solid #bae6fd; background: #f0f9ff; border-radius: 4px; cursor: pointer;">选择</button>'
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectDesignatedParticipant(pId) {
+  let targetRow = null;
+  let targetTrigger = null;
+
+  if (activePickerTargetRow) {
+    targetRow = activePickerTargetRow;
+    targetTrigger = targetRow.querySelector('.draw-desig-part-trigger');
+  } else if (activeDesigPartTrigger) {
+    targetTrigger = activeDesigPartTrigger;
+    targetRow = targetTrigger.closest('.draw-designated-row');
+  }
+
+  if (!targetRow) return;
+
+  const hiddenInput = targetRow.querySelector('.draw-desig-part-select');
+  if (hiddenInput) hiddenInput.value = pId;
+
+  const allParticipants = currentConfirmDrawParticipants || [];
+  const partObj = allParticipants.find(p => String(p.id || p.chatId) === String(pId)) || {};
+  const { username, nickname } = formatParticipantDisplay(partObj);
+
+  if (targetTrigger) {
+    const unameEl = targetTrigger.querySelector('.desig-part-uname');
+    const nickEl = targetTrigger.querySelector('.desig-part-nick');
+    if (unameEl) unameEl.textContent = username;
+    if (nickEl) nickEl.textContent = nickname;
+  }
+
+  closeDesignatedPartDropdown();
+  closeParticipantPickerModal();
+  updateDesignatedCounters();
+}
+
 function addDesignatedWinnerRow(preSelectPartId, preSelectPrizeName) {
   if (!currentConfirmDrawLottery) return;
   const container = document.getElementById('draw-designated-rows-container');
@@ -1195,6 +1530,9 @@ function addDesignatedWinnerRow(preSelectPartId, preSelectPrizeName) {
       : (allParticipants[0] ? (allParticipants[0].id || allParticipants[0].chatId) : '');
   }
 
+  const targetPartObj = allParticipants.find(p => String(p.id || p.chatId) === String(targetPartId)) || allParticipants[0] || {};
+  const { username: targetUname, nickname: targetNick } = formatParticipantDisplay(targetPartObj);
+
   // 4. Pick default target prize (first prize with remaining quota)
   let targetPrizeName = preSelectPrizeName;
   if (!targetPrizeName) {
@@ -1202,24 +1540,7 @@ function addDesignatedWinnerRow(preSelectPartId, preSelectPrizeName) {
     targetPrizeName = availPrize ? availPrize.name : (prizes[0] ? prizes[0].name : '');
   }
 
-  // 5. Build participants options
-  const partOptions = allParticipants.map(p => {
-    let label = '';
-    if (p.username && !p.username.startsWith('User')) {
-      label = `@${p.username}`;
-      if (p.firstName || p.lastName) {
-        label += ` (${[p.firstName, p.lastName].filter(Boolean).join(' ')})`;
-      }
-    } else {
-      label = [p.firstName, p.lastName].filter(Boolean).join(' ') || `User#${String(p.chatId).slice(-4)}`;
-    }
-    label += ` [ID: ${p.chatId}]`;
-    const val = String(p.id || p.chatId);
-    const isSelected = String(targetPartId) === val;
-    return `<option value="${escapeHtml(val)}" data-base-label="${escapeHtml(label)}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-  }).join('');
-
-  // 6. Build prizes options (Display single prize name without misleading total '(2份)')
+  // 5. Build prizes options (Display single prize name without misleading total '(2份)')
   const prizeOptions = prizes.map(p => {
     const isSelected = String(p.name) === String(targetPrizeName);
     return `<option value="${escapeHtml(p.name)}" ${isSelected ? 'selected' : ''}>${escapeHtml(p.name)}</option>`;
@@ -1227,15 +1548,32 @@ function addDesignatedWinnerRow(preSelectPartId, preSelectPrizeName) {
 
   const row = document.createElement('div');
   row.className = 'draw-designated-row';
-  row.style.cssText = 'display: flex; gap: 8px; align-items: center; background: var(--bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px 10px;';
+  row.style.cssText = 'display: flex; gap: 8px; align-items: center; background: var(--bg-subtle, #f8fafc); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; padding: 6px 8px; width: 100%; box-sizing: border-box;';
   row.innerHTML = `
-    <select class="draw-desig-part-select form-input" style="flex: 2; font-size: 0.84rem;" onchange="updateDesignatedCounters()">
-      ${partOptions}
-    </select>
-    <select class="draw-desig-prize-select form-input" style="flex: 1.5; font-size: 0.84rem; font-weight: 600; color: #b45309;" onchange="updateDesignatedCounters()">
-      ${prizeOptions}
-    </select>
-    <button type="button" class="btn btn-secondary btn-xs" onclick="removeDesignatedWinnerRow(this)" style="padding: 6px 10px; color: var(--danger-color);" title="Remove">
+    <!-- Column 1: 获奖者名字列 (固定长度 260px，稍长一些) -->
+    <div class="draw-desig-part-col" style="position: relative; width: 260px; min-width: 260px; max-width: 260px; flex: 0 0 260px; display: flex; gap: 4px; align-items: center;">
+      <input type="hidden" class="draw-desig-part-select" value="${escapeHtml(String(targetPartId))}" />
+      <div class="draw-desig-part-trigger" onclick="openDesignatedPartDropdown(this, event)" style="flex: 1; min-width: 0; height: 42px; background: #ffffff; border: 1px solid var(--border-color, #cbd5e1); border-radius: 6px; padding: 3px 8px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; box-sizing: border-box;" title="点击选择或搜索中奖者">
+        <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0; flex: 1; text-align: left;">
+          <span class="desig-part-uname" style="font-size: 0.82rem; font-weight: 600; color: #0f172a; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(targetUname)}</span>
+          <span class="desig-part-nick" style="font-size: 0.72rem; color: #64748b; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(targetNick)}</span>
+        </div>
+        <span style="font-size: 0.65rem; color: #94a3b8; margin-left: 4px; flex-shrink: 0;">▼</span>
+      </div>
+      <button type="button" class="btn btn-secondary btn-xs" onclick="openParticipantPickerModal(this)" style="width: 32px; min-width: 32px; max-width: 32px; height: 42px; flex: 0 0 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: #e0f2fe; border: 1px solid #7dd3fc; color: #0284c7; border-radius: 6px; cursor: pointer; font-size: 0.85rem;" title="展开搜索弹窗">
+        🔍
+      </button>
+    </div>
+
+    <!-- Column 2: 奖品列 (固定长度 140px) -->
+    <div class="draw-desig-prize-col" style="width: 140px; min-width: 140px; max-width: 140px; flex: 0 0 140px;">
+      <select class="draw-desig-prize-select form-input" style="width: 100%; height: 42px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border-color, #cbd5e1); background: #ffffff; color: #b45309; font-size: 0.82rem; font-weight: 600; box-sizing: border-box;" onchange="updateDesignatedCounters()">
+        ${prizeOptions}
+      </select>
+    </div>
+
+    <!-- Column 3: 移除按钮 (固定长度 32px) -->
+    <button type="button" class="btn btn-secondary btn-xs" onclick="removeDesignatedWinnerRow(this)" style="width: 32px; min-width: 32px; max-width: 32px; height: 42px; flex: 0 0 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--danger-color, #ef4444); border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.08); font-size: 1.15rem; line-height: 1;" title="移除">
       &times;
     </button>
   `;
@@ -1244,6 +1582,8 @@ function addDesignatedWinnerRow(preSelectPartId, preSelectPrizeName) {
 }
 
 function removeDesignatedWinnerRow(btn) {
+  closeDesignatedPartDropdown();
+  closeParticipantPickerModal();
   const row = btn.closest('.draw-designated-row');
   if (row) {
     row.remove();
@@ -1252,6 +1592,8 @@ function removeDesignatedWinnerRow(btn) {
 }
 
 function clearAllDesignatedRows() {
+  closeDesignatedPartDropdown();
+  closeParticipantPickerModal();
   const container = document.getElementById('draw-designated-rows-container');
   if (container) {
     container.innerHTML = '';
@@ -1300,11 +1642,9 @@ function updateDesignatedCounters() {
     }).join('');
   }
 
-  // 3. Dynamically update select options in each row to enforce quotas and prevent duplicate users
+  // 3. Dynamically update select options in each row to enforce quotas
   rows.forEach(r => {
-    const partSel = r.querySelector('.draw-desig-part-select');
     const prizeSel = r.querySelector('.draw-desig-prize-select');
-    const curPartVal = partSel ? String(partSel.value) : '';
     const curPrizeVal = prizeSel ? String(prizeSel.value) : '';
 
     // Update prize select options
@@ -1325,20 +1665,6 @@ function updateDesignatedCounters() {
           opt.disabled = false;
           opt.textContent = `${prName}`;
         }
-      });
-    }
-
-    // Update participant select options
-    if (partSel) {
-      Array.from(partSel.options).forEach(opt => {
-        const partId = String(opt.value);
-        const isChosenByOther = selectedPartIds.has(partId) && partId !== curPartVal;
-        opt.disabled = isChosenByOther;
-        const baseLabel = opt.getAttribute('data-base-label') || opt.textContent.replace(/ \(已在其他行指定\)$/, '');
-        if (!opt.getAttribute('data-base-label')) {
-          opt.setAttribute('data-base-label', baseLabel);
-        }
-        opt.textContent = isChosenByOther ? `${baseLabel} (已在其他行指定)` : baseLabel;
       });
     }
   });
@@ -1363,7 +1689,6 @@ function updateDesignatedCounters() {
   const isLimitReached = assignedCount >= totalPrizeCount || allPrizesFilled || allParticipantsAssigned;
 
   if (addBtn) {
-    // Keep clickable so clicking triggers alert('已达总奖品数上限，不可再添加。')
     addBtn.disabled = false;
     if (isLimitReached) {
       addBtn.style.opacity = '0.65';
@@ -1387,6 +1712,16 @@ function updateDesignatedCounters() {
     }
   }
 }
+
+window.openDesignatedPartDropdown = openDesignatedPartDropdown;
+window.closeDesignatedPartDropdown = closeDesignatedPartDropdown;
+window.onDropdownQuickFilter = onDropdownQuickFilter;
+window.selectDesignatedParticipant = selectDesignatedParticipant;
+window.openParticipantPickerModal = openParticipantPickerModal;
+window.closeParticipantPickerModal = closeParticipantPickerModal;
+window.onParticipantPickerInput = onParticipantPickerInput;
+window.resetParticipantPickerSearch = resetParticipantPickerSearch;
+window.doSearchParticipantPicker = doSearchParticipantPicker;
 
 async function saveAndScheduleDesignatedDraw() {
   if (!currentConfirmDrawLottery) return;

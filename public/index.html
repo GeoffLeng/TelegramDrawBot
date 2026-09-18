@@ -51,13 +51,6 @@
   <!-- Main Content Layout -->
   <main class="main-layout" id="module-draw">
     
-    <!-- Dashboard Top Bar -->
-    <div class="dashboard-top-bar">
-      <div class="dashboard-title-group">
-        <h2>Giveaway Campaigns</h2>
-        <p>Create, schedule, and manage transparent community lucky draws on Telegram.</p>
-      </div>
-    </div>
 
     <!-- KPI Metrics Summary Cards -->
     <div class="kpi-grid">
@@ -473,7 +466,7 @@
           </p>
 
           <!-- Designated Rows Container -->
-          <div id="draw-designated-rows-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+          <div id="draw-designated-rows-container" onscroll="closeDesignatedPartDropdown()" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; overflow-x: hidden; padding-right: 4px;">
             <!-- Rows injected dynamically via JS -->
           </div>
 
@@ -552,6 +545,53 @@
 
   <!-- Scripts -->
   <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
-  <script src="js/app.js?v=5.2.1"></script>
+  <script src="js/app.js?v=5.3.0"></script>
+
+    <!-- Modal: Designated Winner Participant Picker with Search -->
+    <div id="modal-draw-participant-picker" class="modal-overlay hidden" style="z-index: 100050; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center;">
+      <div class="modal-container" style="max-width: 540px; width: 92%; background: #ffffff; border: 1px solid #38bdf8; box-shadow: 0 20px 40px rgba(0,0,0,0.25); border-radius: 12px; padding: 20px; box-sizing: border-box;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 14px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 1.25rem;">👥</span>
+            <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #0f172a;">选择指定中奖者</h3>
+          </div>
+          <button type="button" class="btn-close" onclick="closeParticipantPickerModal()" style="background: none; border: none; font-size: 1.3rem; color: #64748b; cursor: pointer;">&times;</button>
+        </div>
+
+        <!-- Search Toolbar -->
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <div style="position: relative; flex: 1;">
+            <input type="text" id="draw-picker-search-input" class="form-input" placeholder="搜索电报用户名 (@username) 或昵称..." onkeyup="if(event.key==='Enter') doSearchParticipantPicker();" oninput="onParticipantPickerInput()" style="width: 100%; height: 38px; padding: 6px 12px 6px 32px; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.84rem; box-sizing: border-box;" />
+            <span style="position: absolute; left: 10px; top: 9px; font-size: 0.85rem; opacity: 0.5;">🔍</span>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="doSearchParticipantPicker()" style="padding: 0 14px; height: 38px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; background: #0284c7; color: #ffffff; border: none; border-radius: 6px; cursor: pointer;">
+            🔍 搜索
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="resetParticipantPickerSearch()" style="padding: 0 10px; height: 38px; border: 1px solid #cbd5e1; background: #ffffff; color: #475569; border-radius: 6px; cursor: pointer;">
+            重置
+          </button>
+        </div>
+
+        <!-- Stats Bar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.78rem; color: #64748b;">
+          <span>共 <b id="draw-picker-total-count" style="color: #0284c7;">0</b> 位参与者，匹配 <b id="draw-picker-filtered-count" style="color: #d97706;">0</b> 位</span>
+          <span style="font-size: 0.74rem; color: #94a3b8;">支持用户名/昵称不区分大小写</span>
+        </div>
+
+        <!-- Participant List Container -->
+        <div id="draw-picker-list-container" style="max-height: 320px; min-height: 180px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 6px; padding-right: 4px;">
+          <!-- Injected dynamically via JS -->
+        </div>
+
+        <!-- Footer -->
+        <div style="display: flex; justify-content: flex-end; margin-top: 14px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeParticipantPickerModal()" style="padding: 7px 18px; border: 1px solid #cbd5e1; background: #ffffff; color: #475569; border-radius: 6px; cursor: pointer;">
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
+
 </body>
 </html>

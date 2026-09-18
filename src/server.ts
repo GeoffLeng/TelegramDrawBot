@@ -88,7 +88,7 @@ process.on('uncaughtException', (err) => {
 });
 
 // Boot lifecycle
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   console.log('====================================================');
   console.log(`  🚀 TelegramDrawBot Server Running on http://localhost:${PORT}`);
   console.log(`  🔑 Default Admin Password: ${ADMIN_PASSWORD}`);
@@ -109,5 +109,15 @@ app.listen(PORT, async () => {
     }
   } catch (err: any) {
     console.error('[TelegramDrawBot] Startup hook error:', err.message);
+  }
+});
+
+server.on('error', (err: any) => {
+  if (err.code === 'EACCES') {
+    console.error(`❌ [Port Error] Port ${PORT} is restricted by Windows system (Hyper-V / WinNAT exclusion range). Please change PORT in .env (e.g. 3600 or 3300).`);
+  } else if (err.code === 'EADDRINUSE') {
+    console.error(`❌ [Port Error] Port ${PORT} is already in use by another process.`);
+  } else {
+    console.error('❌ [Server Error]', err);
   }
 });
