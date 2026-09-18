@@ -1149,14 +1149,61 @@ function addDesignatedWinnerRow(preSelectPartId, preSelectPrizeName) {
   const container = document.getElementById('draw-designated-rows-container');
   if (!container) return;
 
-  const totalPrizeCount = (currentConfirmDrawLottery.prizes || []).reduce((sum, p) => sum + p.count, 0);
-  const currentRowsCount = container.querySelectorAll('.draw-designated-row').length;
-  if (currentRowsCount >= totalPrizeCount) {
+  const prizes = currentConfirmDrawLottery.prizes || [];
+  const totalPrizeCount = prizes.reduce((sum, p) => sum + p.count, 0);
+  const existingRows = Array.from(container.querySelectorAll('.draw-designated-row'));
+
+  // 1. Quota limit check: If rows reached total prize count, pop up alert!
+  if (existingRows.length >= totalPrizeCount) {
+    alert('已达总奖品数上限，不可再添加。');
     return;
   }
 
-  // Build participants options
-  const partOptions = currentConfirmDrawParticipants.map(p => {
+  // 2. Gather currently selected participant IDs and counts per prize
+  const selectedPartIds = new Set();
+  const assignedByPrize = {};
+  prizes.forEach(p => { assignedByPrize[p.name] = 0; });
+
+  existingRows.forEach(r => {
+    const pVal = r.querySelector('.draw-desig-part-select')?.value;
+    const prVal = r.querySelector('.draw-desig-prize-select')?.value;
+    if (pVal) selectedPartIds.add(String(pVal));
+    if (prVal) assignedByPrize[prVal] = (assignedByPrize[prVal] || 0) + 1;
+  });
+
+  // Check if any prize still has quota
+  const hasAvailablePrize = prizes.some(p => (assignedByPrize[p.name] || 0) < p.count);
+  if (!hasAvailablePrize && !preSelectPrizeName) {
+    alert('已达总奖品数上限，不可再添加。');
+    return;
+  }
+
+  // Check if all participants are already assigned
+  const allParticipants = currentConfirmDrawParticipants || [];
+  const unassignedParts = allParticipants.filter(p => !selectedPartIds.has(String(p.id || p.chatId)));
+  if (unassignedParts.length === 0 && !preSelectPartId && allParticipants.length > 0) {
+    alert('所有参与者均已指定，不可再添加。');
+    return;
+  }
+
+  // 3. Pick default target participant (first available unselected participant in default order)
+  let targetPartId = preSelectPartId;
+  if (!targetPartId) {
+    const availPart = unassignedParts[0];
+    targetPartId = availPart
+      ? (availPart.id || availPart.chatId)
+      : (allParticipants[0] ? (allParticipants[0].id || allParticipants[0].chatId) : '');
+  }
+
+  // 4. Pick default target prize (first prize with remaining quota)
+  let targetPrizeName = preSelectPrizeName;
+  if (!targetPrizeName) {
+    const availPrize = prizes.find(p => (assignedByPrize[p.name] || 0) < p.count);
+    targetPrizeName = availPrize ? availPrize.name : (prizes[0] ? prizes[0].name : '');
+  }
+
+  // 5. Build participants options
+  const partOptions = allParticipants.map(p => {
     let label = '';
     if (p.username && !p.username.startsWith('User')) {
       label = `@${p.username}`;
@@ -1167,14 +1214,15 @@ function addDesignatedWinnerRow(preSelectPartId, preSelectPrizeName) {
       label = [p.firstName, p.lastName].filter(Boolean).join(' ') || `User#${String(p.chatId).slice(-4)}`;
     }
     label += ` [ID: ${p.chatId}]`;
-    const isSelected = preSelectPartId && (String(p.id) === String(preSelectPartId) || String(p.chatId) === String(preSelectPartId));
-    return `<option value="${escapeHtml(p.id || p.chatId)}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    const val = String(p.id || p.chatId);
+    const isSelected = String(targetPartId) === val;
+    return `<option value="${escapeHtml(val)}" data-base-label="${escapeHtml(label)}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
   }).join('');
 
-  // Build prizes options
-  const prizeOptions = (currentConfirmDrawLottery.prizes || []).map(p => {
-    const isSelected = preSelectPrizeName && String(p.name) === String(preSelectPrizeName);
-    return `<option value="${escapeHtml(p.name)}" ${isSelected ? 'selected' : ''}>${escapeHtml(p.name)} (${p.count}份)</option>`;
+  // 6. Build prizes options (Display single prize name without misleading total '(2份)')
+  const prizeOptions = prizes.map(p => {
+    const isSelected = String(p.name) === String(targetPrizeName);
+    return `<option value="${escapeHtml(p.name)}" ${isSelected ? 'selected' : ''}>${escapeHtml(p.name)}</option>`;
   }).join('');
 
   const row = document.createElement('div');
@@ -1214,9 +1262,89 @@ function clearAllDesignatedRows() {
 function updateDesignatedCounters() {
   if (!currentConfirmDrawLottery) return;
   const container = document.getElementById('draw-designated-rows-container');
-  const rows = container ? container.querySelectorAll('.draw-designated-row') : [];
+  const rows = container ? Array.from(container.querySelectorAll('.draw-designated-row')) : [];
+  const prizes = currentConfirmDrawLottery.prizes || [];
+  const totalPrizeCount = prizes.reduce((sum, p) => sum + p.count, 0);
+
+  // 1. Gather all current selections
+  const selectedPartIds = new Set();
+  const assignedByPrize = {};
+  prizes.forEach(p => { assignedByPrize[p.name] = 0; });
+
+  rows.forEach(r => {
+    const partSel = r.querySelector('.draw-desig-part-select');
+    const prizeSel = r.querySelector('.draw-desig-prize-select');
+    if (partSel && partSel.value) selectedPartIds.add(String(partSel.value));
+    if (prizeSel && prizeSel.value) {
+      assignedByPrize[prizeSel.value] = (assignedByPrize[prizeSel.value] || 0) + 1;
+    }
+  });
+
+  // 2. Render individual prize breakdown badges in #draw-desig-pills-wrap
+  const pillsWrap = document.getElementById('draw-desig-pills-wrap');
+  if (pillsWrap) {
+    pillsWrap.innerHTML = prizes.map(p => {
+      const assigned = assignedByPrize[p.name] || 0;
+      const isFull = assigned >= p.count;
+      const isOver = assigned > p.count;
+      const bg = isOver ? '#fee2e2' : (isFull ? '#dcfce7' : '#fef3c7');
+      const border = isOver ? '#fca5a5' : (isFull ? '#86efac' : '#fde68a');
+      const color = isOver ? '#b91c1c' : (isFull ? '#15803d' : '#b45309');
+      const statusText = isOver ? `超额 +${assigned - p.count}` : (isFull ? '已选满' : `剩 ${p.count - assigned} 份`);
+      return `
+        <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: 6px; background: ${bg}; border: 1px solid ${border}; color: ${color};">
+          <span>🎁 ${escapeHtml(p.name)}:</span>
+          <span>${assigned}/${p.count} (${statusText})</span>
+        </span>
+      `;
+    }).join('');
+  }
+
+  // 3. Dynamically update select options in each row to enforce quotas and prevent duplicate users
+  rows.forEach(r => {
+    const partSel = r.querySelector('.draw-desig-part-select');
+    const prizeSel = r.querySelector('.draw-desig-prize-select');
+    const curPartVal = partSel ? String(partSel.value) : '';
+    const curPrizeVal = prizeSel ? String(prizeSel.value) : '';
+
+    // Update prize select options
+    if (prizeSel) {
+      Array.from(prizeSel.options).forEach(opt => {
+        const prName = opt.value;
+        const prizeDef = prizes.find(p => p.name === prName);
+        if (!prizeDef) return;
+        const total = prizeDef.count;
+        // Remaining slots for THIS row if it keeps or changes to this option
+        const assignedOtherRows = (assignedByPrize[prName] || 0) - (curPrizeVal === prName ? 1 : 0);
+        const remForThisRow = total - assignedOtherRows;
+
+        if (remForThisRow <= 0) {
+          opt.disabled = true;
+          opt.textContent = `${prName} (已选满)`;
+        } else {
+          opt.disabled = false;
+          opt.textContent = `${prName}`;
+        }
+      });
+    }
+
+    // Update participant select options
+    if (partSel) {
+      Array.from(partSel.options).forEach(opt => {
+        const partId = String(opt.value);
+        const isChosenByOther = selectedPartIds.has(partId) && partId !== curPartVal;
+        opt.disabled = isChosenByOther;
+        const baseLabel = opt.getAttribute('data-base-label') || opt.textContent.replace(/ \(已在其他行指定\)$/, '');
+        if (!opt.getAttribute('data-base-label')) {
+          opt.setAttribute('data-base-label', baseLabel);
+        }
+        opt.textContent = isChosenByOther ? `${baseLabel} (已在其他行指定)` : baseLabel;
+      });
+    }
+  });
+
+  // 4. Update summary counters
   const assignedCount = rows.length;
-  const totalPrizeCount = (currentConfirmDrawLottery.prizes || []).reduce((sum, p) => sum + p.count, 0);
   const remainingCount = Math.max(0, totalPrizeCount - assignedCount);
 
   const totalEl = document.getElementById('draw-desig-total-prizes');
@@ -1229,12 +1357,34 @@ function updateDesignatedCounters() {
   if (assignedEl) assignedEl.textContent = assignedCount;
   if (remainingEl) remainingEl.textContent = remainingCount;
 
-  if (assignedCount >= totalPrizeCount) {
-    if (addBtn) addBtn.disabled = true;
-    if (limitTip) limitTip.classList.remove('hidden');
-  } else {
-    if (addBtn) addBtn.disabled = false;
-    if (limitTip) limitTip.classList.add('hidden');
+  // 5. Control "➕ 添加指定获奖者" button
+  const allPrizesFilled = prizes.every(p => (assignedByPrize[p.name] || 0) >= p.count);
+  const allParticipantsAssigned = currentConfirmDrawParticipants && assignedCount >= currentConfirmDrawParticipants.length;
+  const isLimitReached = assignedCount >= totalPrizeCount || allPrizesFilled || allParticipantsAssigned;
+
+  if (addBtn) {
+    // Keep clickable so clicking triggers alert('已达总奖品数上限，不可再添加。')
+    addBtn.disabled = false;
+    if (isLimitReached) {
+      addBtn.style.opacity = '0.65';
+      addBtn.style.cursor = 'not-allowed';
+    } else {
+      addBtn.style.opacity = '1';
+      addBtn.style.cursor = 'pointer';
+    }
+  }
+
+  if (limitTip) {
+    if (isLimitReached) {
+      limitTip.classList.remove('hidden');
+      if (allPrizesFilled || assignedCount >= totalPrizeCount) {
+        limitTip.textContent = '已达总奖品数上限';
+      } else if (allParticipantsAssigned) {
+        limitTip.textContent = '所有参与者均已指定完毕';
+      }
+    } else {
+      limitTip.classList.add('hidden');
+    }
   }
 }
 

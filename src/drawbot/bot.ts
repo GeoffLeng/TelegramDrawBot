@@ -532,6 +532,24 @@ export async function performDraw(
       ? designatedWinners
       : (lottery.designatedWinners && Array.isArray(lottery.designatedWinners) ? lottery.designatedWinners : []);
 
+    if (designatedWinners && Array.isArray(designatedWinners) && designatedWinners.length > 0) {
+      const quotaCheck = new Map<string, number>();
+      for (const p of prizes) quotaCheck.set(p.name, p.count);
+      const seenCheck = new Set<string>();
+      for (const dw of designatedWinners) {
+        if (!dw.participantId || !dw.prizeName) continue;
+        if (seenCheck.has(dw.participantId)) {
+          throw new Error(`参与者已被重复指定，同一用户只能中奖一次 (ID: ${dw.participantId})`);
+        }
+        seenCheck.add(dw.participantId);
+        const maxS = quotaCheck.get(dw.prizeName) || 0;
+        if (maxS <= 0) {
+          throw new Error(`奖品【${dw.prizeName}】指定人数超出配额上限！`);
+        }
+        quotaCheck.set(dw.prizeName, maxS - 1);
+      }
+    }
+
     if (effectiveDesignated && Array.isArray(effectiveDesignated)) {
       for (const dw of effectiveDesignated) {
         if (!dw.participantId || !dw.prizeName) continue;

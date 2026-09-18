@@ -507,6 +507,36 @@ export async function saveDesignatedWinners(
     dw => dw && dw.participantId && dw.prizeName
   );
 
+  // Validate designated winners against event prize quotas and uniqueness
+  if (cleanDesignated.length > 0) {
+    const prizeRows = await db.all('SELECT name, count FROM prizes WHERE lottery_id = ?', lotteryId);
+    const prizeQuotaMap = new Map<string, number>();
+    for (const p of prizeRows) {
+      prizeQuotaMap.set(p.name, Number(p.count));
+    }
+
+    const seenParticipants = new Set<string>();
+    const assignedCounts = new Map<string, number>();
+
+    for (const dw of cleanDesignated) {
+      if (seenParticipants.has(dw.participantId)) {
+        throw new Error(`参与者已被重复指定，同一用户只能中奖一次 (ID: ${dw.participantId})`);
+      }
+      seenParticipants.add(dw.participantId);
+
+      const maxLimit = prizeQuotaMap.get(dw.prizeName);
+      if (maxLimit === undefined) {
+        throw new Error(`指定了不存在的奖品类型：【${dw.prizeName}】`);
+      }
+
+      const currentAssigned = (assignedCounts.get(dw.prizeName) || 0) + 1;
+      if (currentAssigned > maxLimit) {
+        throw new Error(`奖品【${dw.prizeName}】总数仅有 ${maxLimit} 份，但指定了 ${currentAssigned} 人，超出配额上限！`);
+      }
+      assignedCounts.set(dw.prizeName, currentAssigned);
+    }
+  }
+
   const serialized = cleanDesignated.length > 0 ? JSON.stringify(cleanDesignated) : null;
 
   if (autoDrawTime && autoDrawTime.trim()) {
