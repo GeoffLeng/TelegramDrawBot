@@ -224,12 +224,12 @@
 
               <div id="draw-form-autotime-wrap" class="form-group hidden">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <label class="form-label">Auto Draw Time (UTC+8) *</label>
-                  <span id="draw-form-bjt-clock" style="font-size: 0.76rem; color: var(--primary-color); font-family: var(--font-mono); font-weight: 600;"></span>
+                  <label class="form-label">Auto Draw Time (System Local Time) *</label>
+                  <span id="draw-form-clock" style="font-size: 0.76rem; color: var(--primary-color); font-family: var(--font-mono); font-weight: 600;"></span>
                 </div>
                 <input type="datetime-local" id="draw-form-autotime" class="form-input" />
                 <div style="font-size: 0.74rem; color: var(--warning-color); margin-top: 2px;">
-                  ⚠️ Please enter Beijing Time (UTC+8). Cannot be earlier than current time.
+                  ⚠️ Please enter system local time. Cannot be earlier than current time.
                 </div>
               </div>
             </div>
@@ -489,7 +489,7 @@
           <!-- Schedule Auto Draw Time Box -->
           <div id="draw-desig-schedule-box" class="form-section">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">⏰ 自动开奖时间 (UTC+8):</span>
+              <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">⏰ 自动开奖时间 (系统时区):</span>
               <span id="draw-desig-current-autotime-badge" style="font-size: 0.78rem; color: var(--primary-color); font-family: var(--font-mono); font-weight: 600;">--</span>
             </div>
             <div id="draw-desig-time-input-wrap" class="hidden" style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">

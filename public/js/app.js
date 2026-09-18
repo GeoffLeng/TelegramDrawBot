@@ -141,47 +141,63 @@ function escapeHtml(str) {
 
 // === TELEGRAM DRAW BOT MODULE CLIENT LOGIC ===
 
-// === BEIJING TIME (UTC+8) HELPERS ===
-function toBjtIsoString(dtLocalVal) {
-  if (!dtLocalVal || !dtLocalVal.trim()) return undefined;
-  // If already formatted with timezone, return as is
-  if (dtLocalVal.includes('+') || dtLocalVal.endsWith('Z')) return dtLocalVal;
-  // If in YYYY-MM-DDTHH:mm format, attach Beijing Time (+08:00) offset
-  return `${dtLocalVal}:00+08:00`;
+// === USER SYSTEM TIMEZONE HELPERS ===
+function getSystemTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch (e) {
+    return 'UTC';
+  }
 }
 
-function formatBjtDisplay(dateInput) {
+function getSystemTimeZoneOffsetStr() {
+  const offsetMinutes = -new Date().getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const pad = (n) => String(Math.abs(n)).padStart(2, '0');
+  const hours = pad(Math.floor(Math.abs(offsetMinutes) / 60));
+  const mins = pad(Math.abs(offsetMinutes) % 60);
+  return `UTC${sign}${hours}:${mins}`;
+}
+
+// Formats date/timestamp for display in user's system timezone (YYYY-MM-DD HH:mm:ss)
+function formatLocalDisplay(dateInput) {
   if (!dateInput) return '-';
   const d = new Date(dateInput);
   if (isNaN(d.getTime())) return String(dateInput);
-  return d.toLocaleString('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  }).replace(/\//g, '-');
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function toBjtInputString(dateInput) {
+// Converts Date / ISO string to <input type="datetime-local"> value (YYYY-MM-DDTHH:mm) in system local time
+function toLocalInputString(dateInput) {
   if (!dateInput) return '';
   const d = new Date(dateInput);
   if (isNaN(d.getTime())) return '';
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).formatToParts(d);
-  const find = (type) => parts.find(p => p.type === type)?.value || '';
-  return `${find('year')}-${find('month')}-${find('day')}T${find('hour')}:${find('minute')}`;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+// Converts datetime-local string to ISO string with user's system local timezone offset
+function toLocalIsoString(dtLocalVal) {
+  if (!dtLocalVal || !dtLocalVal.trim()) return undefined;
+  // If already formatted with timezone offset or UTC, return as-is
+  if (dtLocalVal.includes('+') || dtLocalVal.endsWith('Z')) return dtLocalVal;
+  const d = new Date(dtLocalVal);
+  if (isNaN(d.getTime())) return dtLocalVal;
+  const offsetMinutes = -d.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const pad = (n) => String(Math.abs(n)).padStart(2, '0');
+  const hours = pad(Math.floor(Math.abs(offsetMinutes) / 60));
+  const mins = pad(Math.abs(offsetMinutes) % 60);
+  const offsetStr = `${sign}${hours}:${mins}`;
+  const baseTime = dtLocalVal.length === 16 ? `${dtLocalVal}:00` : dtLocalVal;
+  return `${baseTime}${offsetStr}`;
+}
+
+// Backward-compatible alias helpers
+const formatBjtDisplay = formatLocalDisplay;
+const toBjtIsoString = toLocalIsoString;
+const toBjtInputString = toLocalInputString;
 
 const drawState = {
   engineEnabled: false,
@@ -485,7 +501,7 @@ function renderDrawCampaigns() {
       prizeSummary = l.prizes.map(p => `${p.count}x ${escapeHtml(p.name)}`).join(', ');
     }
 
-    const autoTimeDisplay = l.autoDrawTime ? l.autoDrawTime.replace('T', ' ') : (l.endTime ? l.endTime.replace('T', ' ') : 'Manual');
+    const autoTimeDisplay = l.autoDrawTime ? formatLocalDisplay(l.autoDrawTime) : (l.endTime ? formatLocalDisplay(l.endTime) : 'Manual');
 
     return `
       <div class="draw-card">
@@ -642,7 +658,7 @@ function openEditDrawModal(id) {
   if (fBtnText) fBtnText.value = lottery.buttonText || '🎉 Join Lucky Draw';
   if (fImgUrl) fImgUrl.value = lottery.imageUrl || '';
   if (fMode) fMode.value = lottery.drawMode || 'MANUAL';
-  if (fAutoTime) fAutoTime.value = lottery.autoDrawTime || '';
+  if (fAutoTime) fAutoTime.value = lottery.autoDrawTime ? toLocalInputString(lottery.autoDrawTime) : '';
   if (fReqChannel) fReqChannel.value = lottery.requiredChannelId || '';
   if (fReqGroup) fReqGroup.value = lottery.requiredGroupId || '';
   if (fAllowedIds) fAllowedIds.value = (lottery.allowedChatIds || []).join(', ');
@@ -756,9 +772,9 @@ function toggleDrawModeFields() {
 }
 
 function updateDrawFormClock() {
-  const clockEl = document.getElementById('draw-form-bjt-clock');
+  const clockEl = document.getElementById('draw-form-clock') || document.getElementById('draw-form-bjt-clock');
   if (clockEl) {
-    clockEl.textContent = `当前北京: ${formatBjtDisplay(new Date())}`;
+    clockEl.textContent = `系统本地时间: ${formatLocalDisplay(new Date())} (${getSystemTimeZone()})`;
   }
 }
 
@@ -807,7 +823,7 @@ async function handleSaveDrawCampaign(event) {
   const imageUrl = document.getElementById('draw-form-image-url')?.value.trim() || undefined;
   const drawMode = document.getElementById('draw-form-mode')?.value || 'MANUAL';
   const rawAutoTime = document.getElementById('draw-form-autotime')?.value;
-    const autoDrawTime = rawAutoTime ? toBjtIsoString(rawAutoTime) : undefined;
+  const autoDrawTime = rawAutoTime ? toLocalIsoString(rawAutoTime) : undefined;
   const cleanLinkOrId = (val) => {
     if (!val || !val.trim()) return undefined;
     let clean = val.trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^t\.me\//i, '').trim();
@@ -841,7 +857,7 @@ async function handleSaveDrawCampaign(event) {
 
   if (drawMode === 'AUTO') {
     if (!autoDrawTime) {
-      alert('⚠️ 请设置自动开奖时间 (UTC+8)！');
+      alert('⚠️ 请设置自动开奖时间（系统本地时区）！');
       return;
     }
     const autoDrawMs = new Date(autoDrawTime).getTime();
@@ -850,7 +866,8 @@ async function handleSaveDrawCampaign(event) {
       return;
     }
     if (autoDrawMs <= Date.now()) {
-      alert(`⚠️ 自动开奖时间不能早于当前时间！\n\n当前北京时间: ${formatBjtDisplay(new Date())}\n所选开奖时间: ${formatBjtDisplay(autoDrawTime)}\n\n请设置未来的开奖时间。`);
+      const tzName = getSystemTimeZone();
+      alert(`⚠️ 自动开奖时间不能早于当前时间！\n\n当前系统时间: ${formatLocalDisplay(new Date())} (${tzName})\n所选开奖时间: ${formatLocalDisplay(autoDrawTime)}\n\n请设置未来的开奖时间。`);
       return;
     }
   }
@@ -989,9 +1006,9 @@ async function openDrawConfirmModal(id) {
 
   if (autoEl) {
     if (lottery.autoDrawTime) {
-      autoEl.textContent = `${formatBjtDisplay(lottery.autoDrawTime)} (自动开奖)`;
+      autoEl.textContent = `${formatLocalDisplay(lottery.autoDrawTime)} (自动开奖)`;
     } else if (lottery.endTime) {
-      autoEl.textContent = `${formatBjtDisplay(lottery.endTime)} (活动结束)`;
+      autoEl.textContent = `${formatLocalDisplay(lottery.endTime)} (活动结束)`;
     } else {
       autoEl.textContent = '手动开奖 (Manual)';
     }
@@ -1106,7 +1123,7 @@ function switchToDesignatedDrawView() {
   const scheduleBtn = document.getElementById('btn-save-schedule-designated');
 
   if (currentConfirmDrawLottery.autoDrawTime) {
-    if (scheduleBadge) scheduleBadge.textContent = formatBjtDisplay(currentConfirmDrawLottery.autoDrawTime);
+    if (scheduleBadge) scheduleBadge.textContent = formatLocalDisplay(currentConfirmDrawLottery.autoDrawTime);
     if (timeInputWrap) timeInputWrap.classList.add('hidden');
     if (scheduleBtn) scheduleBtn.textContent = '⏰ 按照 Auto Draw 时间开奖';
   } else {
@@ -1263,7 +1280,7 @@ async function saveAndScheduleDesignatedDraw() {
   let autoDrawTime = currentConfirmDrawLottery.autoDrawTime;
   const newTimeInput = document.getElementById('draw-desig-new-autotime');
   if ((!autoDrawTime || !autoDrawTime.trim()) && newTimeInput && newTimeInput.value) {
-    autoDrawTime = toBjtIsoString(newTimeInput.value);
+    autoDrawTime = toLocalIsoString(newTimeInput.value);
   }
 
   if (!autoDrawTime || !autoDrawTime.trim()) {
@@ -1288,7 +1305,7 @@ async function saveAndScheduleDesignatedDraw() {
     if (res.ok) {
       closeDrawConfirmModal();
       await loadDrawModule();
-      const timeFormatted = formatBjtDisplay(autoDrawTime);
+      const timeFormatted = formatLocalDisplay(autoDrawTime);
       if (designatedWinners.length > 0) {
         showToastNotification(`✅ 已成功保存指定获奖者（共 ${designatedWinners.length} 人）！将在自动开奖时间（${timeFormatted}）自动开奖并公布，无需再次人工操作。`, 'show');
       } else {
@@ -1559,7 +1576,7 @@ function exportDrawWinnersCsv() {
   allWinners.forEach(w => {
     const row = [
       `"${w.lotteryId || ''}"`,
-      `"${formatBjtDisplay(Date.now())}"`,
+      `"${formatLocalDisplay(Date.now())}"`,
       `"${w.campaign.replace(/"/g, '""')}"`,
       `"${w.campaign.replace(/"/g, '""')}"`,
       `"${w.username.replace(/"/g, '""')}"`,
