@@ -1311,7 +1311,7 @@ function renderDropdownItems(query, curPartId, otherSelectedIds) {
     const checkIcon = isCurSelected ? '<span style="color: #0284c7; font-size: 0.8rem;">✓</span>' : '';
 
     return `
-      <div onclick="selectDesignatedParticipant('${escapeHtml(pId)}')" style="padding: 6px 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: background 0.15s; ${activeBg}" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='${isCurSelected ? '#e0f2fe' : 'transparent'}'">
+      <div data-pid="${escapeHtml(pId)}" onclick="selectDesignatedParticipant(this.dataset.pid)" style="padding: 6px 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: background 0.15s; ${activeBg}" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='${isCurSelected ? '#e0f2fe' : 'transparent'}'">
         <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0; flex: 1;">
           <div style="font-size: 0.82rem; color: #0f172a; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(username)}</div>
           <div style="font-size: 0.72rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(nickname)}</div>
@@ -1425,7 +1425,7 @@ function doSearchParticipantPicker() {
     const borderStyle = isCurSelected ? 'border: 1px solid #0284c7; background: #f0f9ff;' : 'border: 1px solid #e2e8f0; background: #ffffff;';
 
     return `
-      <div onclick="selectDesignatedParticipant('${escapeHtml(pId)}')" style="display: flex; justify-content: space-between; align-items: center; border-radius: 8px; padding: 8px 12px; cursor: pointer; transition: all 0.15s ease; ${borderStyle}" onmouseover="if(!${isCurSelected}) this.style.background='#f8fafc';" onmouseout="if(!${isCurSelected}) this.style.background='#ffffff';">
+      <div data-pid="${escapeHtml(pId)}" onclick="selectDesignatedParticipant(this.dataset.pid)" style="display: flex; justify-content: space-between; align-items: center; border-radius: 8px; padding: 8px 12px; cursor: pointer; transition: all 0.15s ease; ${borderStyle}" onmouseover="if(!${isCurSelected}) this.style.background='#f8fafc';" onmouseout="if(!${isCurSelected}) this.style.background='#ffffff';">
         <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
           <div style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #0284c7 0%, #6366f1 100%); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.84rem; flex-shrink: 0; box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);">
             ${escapeHtml(initial)}
